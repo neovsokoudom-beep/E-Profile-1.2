@@ -1234,7 +1234,7 @@ function buildWarning() {
 
 
 function sj(a, b, sep) {
-  sep = sep || ' / ';
+  sep = sep || ' - ';
   var va = a || '', vb = b || '';
   if (va && vb) return va + sep + vb;
   if (va) return va;
@@ -2161,11 +2161,6 @@ function exportAllEmployeesReport_() {
 }
 
 function exportExcelReport() {
-  if (hasStoredRecordsForExport_()) {
-    exportAllEmployeesReport_();
-    return;
-  }
-
   var d = getMergedData();
   var wb = XLSX.utils.book_new();
   var rows = buildSummaryReportRows_(d, 'របាយការណ៍');
@@ -3000,10 +2995,6 @@ function newRecord() {
 
 
 function downloadSummary() {
-  if (hasStoredRecordsForExport_()) {
-    exportAllEmployeesExcel();
-    return;
-  }
   var d = getMergedData();
   var wb = XLSX.utils.book_new();
   var nm = ((d.info.lastNameKh||'')+' '+(d.info.firstNameKh||'')).trim()||'N/A';
