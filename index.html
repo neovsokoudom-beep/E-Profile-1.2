@@ -1901,13 +1901,24 @@ var records = [];
 function loadRecords() {
   try {
     var raw = localStorage.getItem(STORE_KEY);
-    if (raw) records = JSON.parse(raw);
-    else records = [];
+    var parsed = raw ? JSON.parse(raw) : [];
+    records = Array.isArray(parsed) ? parsed : [];
   } catch(e) { records = []; }
 }
 
 function saveRecords() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(records)); } catch(e) {}
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(records));
+    return true;
+  } catch(e) {
+    return false;
+  }
+}
+
+function refreshStorageCount_() {
+  var countEl = document.getElementById('searchCount');
+  if (!countEl) return;
+  countEl.textContent = String((records || []).length) + ' records in storage';
 }
 
 function saveCurrentToStorage() {
@@ -2202,7 +2213,7 @@ function exBackup() { exportExcelBackup(); }
 
 // Initialize storage on load
 loadRecords();
-document.getElementById('searchCount').textContent = records.length + ' records in storage';
+refreshStorageCount_();
 
 
 // ═══ FAMILY MULTI-ENTRY ═══
@@ -2438,17 +2449,24 @@ async function saveProgress() {
   var d = getMergedData();
   var id = d.info.officerId || ('REC_' + Date.now());
   var name = ((d.info.lastNameKh||'') + ' ' + (d.info.firstNameKh||'')).trim();
+  var localSaved = false;
   try {
     loadRecords();
     var idx = records.findIndex(function(r){ return r.id === id; });
     var rec = { id:id, name:name, data:d, panelData: JSON.parse(JSON.stringify(panelData || {})), updated: new Date().toISOString() };
     if (idx >= 0) records[idx] = rec; else records.push(rec);
-    saveRecords();
+    localSaved = saveRecords();
   } catch(e) {}
   savePanelDraft_();
   // Update the employee record table
   if (typeof updateEmpSummary === 'function') updateEmpSummary();
-  showToast('Saved locally! (ID: ' + id + ')', 'success');
+  loadRecords();
+  refreshStorageCount_();
+  if (localSaved) {
+    showToast('Saved locally! (ID: ' + id + ')', 'success');
+  } else {
+    showToast('Local save failed. Please allow browser storage/site data.', 'error');
+  }
   try {
     var sync = await syncProfileToBackend_(d);
     if (sync && sync.success) {
@@ -2457,7 +2475,7 @@ async function saveProgress() {
       showToast('Saved locally only. Please set EPROFILE_WEB_APP_URL.', 'error');
     }
   } catch (err) {
-    showToast('Saved locally, but sync failed: ' + err.message, 'error');
+    showToast((localSaved ? 'Saved locally' : 'Local save failed') + ', and sync failed: ' + err.message, 'error');
   }
 }
 
@@ -2476,6 +2494,7 @@ async function deleteEmployeeData_(employeeId) {
     var before = records.length;
     records = records.filter(function(r) { return String(r.id || '').trim() !== id; });
     if (records.length !== before) saveRecords();
+    refreshStorageCount_();
     if (typeof updateEmpSummary === 'function') updateEmpSummary();
   } catch (e) {}
 
