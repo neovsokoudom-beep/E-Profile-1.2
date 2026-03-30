@@ -1555,6 +1555,29 @@ function restorePanelData() {
   }, 100);
 }
 
+function collectIndexedEntries_(panelObj, prefix, fieldMap) {
+  var src = panelObj || {};
+  var map = fieldMap || {};
+  var idxMap = {};
+  Object.keys(src).forEach(function(key) {
+    var m = new RegExp('^' + prefix + '(\\d+)_([a-zA-Z0-9]+)$').exec(String(key || ''));
+    if (!m) return;
+    var idx = m[1];
+    var token = m[2];
+    if (!map[token]) return;
+    if (!idxMap[idx]) idxMap[idx] = {};
+    idxMap[idx][map[token]] = src[key] || '';
+  });
+  return Object.keys(idxMap)
+    .sort(function(a, b) { return Number(a) - Number(b); })
+    .map(function(k) { return idxMap[k]; })
+    .filter(function(entry) {
+      return Object.keys(entry || {}).some(function(fieldKey) {
+        return String(entry[fieldKey] || '').trim();
+      });
+    });
+}
+
 // Build merged data from all panels for summary/export
 function getMergedData() {
   // First save current panel
@@ -1610,7 +1633,11 @@ function getMergedData() {
       sub1: p.work_sub1||'', sub2: p.work_sub2||'', sub3: p.work_sub3||'',
       sub4: p.work_sub4||'', sub5: p.work_sub5||'',
       position: p.work_pos||'', equivalent: p.work_eq||'',
-      status: p.work_stat||'', note: p.work_note||''
+      status: p.work_stat||'', note: p.work_note||'',
+      entries: collectIndexedEntries_(p, 'w', {
+        start: 'startDate', end: 'endDate', min: 'ministry', pos: 'position',
+        eq: 'equivalent', stat: 'status', note: 'note'
+      })
     };
   }
   if (pd.framework) {
@@ -1639,7 +1666,11 @@ function getMergedData() {
       level: p.edu_lev||'', course: p.edu_course||'',
       degree: p.edu_deg||'', major: p.edu_maj||'',
       institution: p.edu_inst||'', city: p.edu_city||'',
-      country: p.edu_country||'', note: p.edu_note||''
+      country: p.edu_country||'', note: p.edu_note||'',
+      entries: collectIndexedEntries_(p, 'e', {
+        start: 'startDate', end: 'endDate', lev: 'level', deg: 'degree',
+        maj: 'major', inst: 'institution', country: 'country', note: 'note'
+      })
     };
   }
   if (pd.language) {
@@ -1981,9 +2012,9 @@ function buildSummaryReportRows_(d, titlePrefix) {
   var ca = [d.info.currentAddr.street, d.info.currentAddr.village, d.info.currentAddr.commune, d.info.currentAddr.district, d.info.currentAddr.province].filter(Boolean).join(', ');
   var warningItems = Array.isArray(d.warning.items) ? d.warning.items : [];
   var rows = [
-    [(titlePrefix ? (titlePrefix + ' - ') : '') + 'ព័ត៌មានសង្ខេបរបស់និយោជិត', '', ''],
+    ['ព័ត៌មានសង្ខេបរបស់និយោជិត', '', ''],
     ['កាលបរិច្ឆេទ: ' + new Date().toLocaleDateString('km-KH'), '', ''],
-    ['មន្ត្រី: ' + nm + (ne ? (' (' + ne + ')') : ''), '', ''],
+    ['មន្ត្រី: ' + nm + (ne ? (' (' + ne + ')') : '') + (titlePrefix ? (' | ' + titlePrefix) : ''), '', ''],
     ['អត្តលេខ: ' + (d.info.officerId || ''), '', ''],
     ['', '', ''],
     ['ផ្នែក', 'វាល', 'តម្លៃ']
@@ -1994,7 +2025,11 @@ function buildSummaryReportRows_(d, titlePrefix) {
     rows.push(['', '', '']);
   }
 
-  add('១. ព័ត៌មាននិយោជិត', [
+  function secTitle_(label, idx) {
+    return label + ' #' + idx;
+  }
+
+  add(secTitle_('ព័ត៌មាននិយោជិត', 1), [
     ['ឈ្មោះ (ខ្មែរ)', nm],
     ['ឈ្មោះ (ឡាតាំង)', ne],
     ['ភេទ / ថ្ងៃខែឆ្នាំកំណើត', sj(d.info.gender, d.info.dob)],
@@ -2008,28 +2043,37 @@ function buildSummaryReportRows_(d, titlePrefix) {
     ['URL រូបថត', d.info.photoUrl || '']
   ]);
 
-  add('២. ព័ត៌មានគ្រួសារ', [
+  add(secTitle_('ព័ត៌មានគ្រួសារ', 2), [
     ['ទំនាក់ទំនង', d.family.relation],
     ['ឈ្មោះ', ((d.family.lastNameKh || '') + ' ' + (d.family.firstNameKh || '')).trim()],
     ['ភេទ / ថ្ងៃខែឆ្នាំកំណើត', sj(d.family.gender, d.family.dob)],
     ['មុខរបរ', d.family.occupation]
   ]);
 
-  add('៣. ប្រវត្តិការងារ', [
+  var workSectionItems = [
     ['កាលបរិច្ឆេទ', sj(d.work.startDate, d.work.endDate, ' ~ ')],
     ['ក្រសួង', d.work.ministry],
     ['មុខតំណែង / ឋានៈស្មើ', sj(d.work.position, d.work.equivalent)],
     ['ស្ថានភាព', d.work.status]
-  ]);
+  ];
+  (Array.isArray(d.work.entries) ? d.work.entries : []).forEach(function(w, idx) {
+    workSectionItems.push([
+      'ប្រវត្តិការងារ #' + (idx + 2),
+      [sj(w.startDate, w.endDate, ' ~ '), w.ministry, sj(w.position, w.equivalent), w.status, w.note]
+        .filter(function(v) { return String(v || '').trim(); })
+        .join(' | ')
+    ]);
+  });
+  add(secTitle_('ប្រវត្តិការងារ', 3), workSectionItems);
 
-  add('៤. ក្របខណ្ឌ', [
+  add(secTitle_('ក្របខណ្ឌ', 4), [
     ['កាលបរិច្ឆេទ', sj(d.framework.startDate, d.framework.endDate, ' ~ ')],
     ['ប្រភេទ', d.framework.type],
     ['ប្រភេទ / ឋានន្តរសក្ដិ / ថ្នាក់', sj(d.framework.category, d.framework.rank) + (d.framework.grade ? (' / ' + d.framework.grade) : '')],
     ['ឡើងសន្ទស្សន៍តាម', d.framework.indexUp]
   ]);
 
-  add('៥. មុខងារបន្ថែម', [
+  add(secTitle_('មុខងារបន្ថែម', 5), [
     ['កាលបរិច្ឆេទ', sj(d.additional.startDate, d.additional.endDate, ' ~ ')],
     ['មុខតំណែង / ឋានៈស្មើ', sj(d.additional.position, d.additional.equivalent)],
     ['ក្រសួង', d.additional.ministry],
@@ -2039,15 +2083,24 @@ function buildSummaryReportRows_(d, titlePrefix) {
     ['សម្គាល់', d.additional.note]
   ]);
 
-  add('៦. ប្រវត្តិការសិក្សា', [
+  var eduSectionItems = [
     ['កាលបរិច្ឆេទ', sj(d.education.startDate, d.education.endDate, ' ~ ')],
     ['ថ្នាក់សិក្សា / វគ្គ', sj(d.education.level, d.education.course)],
     ['សញ្ញាបត្រ / ជំនាញ', sj(d.education.degree, d.education.major)],
     ['គ្រឹះស្ថានសិក្សា', d.education.institution],
     ['ខេត្ត/ក្រុង / ប្រទេស', sj(d.education.city, d.education.country)]
-  ]);
+  ];
+  (Array.isArray(d.education.entries) ? d.education.entries : []).forEach(function(e, idx) {
+    eduSectionItems.push([
+      'ប្រវត្តិការសិក្សា #' + (idx + 2),
+      [sj(e.startDate, e.endDate, ' ~ '), sj(e.level, e.degree), e.major, e.institution, e.country, e.note]
+        .filter(function(v) { return String(v || '').trim(); })
+        .join(' | ')
+    ]);
+  });
+  add(secTitle_('ប្រវត្តិការសិក្សា', 6), eduSectionItems);
 
-  add('៧. ភាសា', [
+  add(secTitle_('ភាសា', 7), [
     ['ភាសា', d.language.language],
     ['អាន / សរសេរ', sj(d.language.reading, d.language.writing)],
     ['ស្តាប់ / និយាយ', sj(d.language.listening, d.language.speaking)]
@@ -2060,7 +2113,7 @@ function buildSummaryReportRows_(d, titlePrefix) {
   warningItems.forEach(function(w, i) {
     warningRows.push(['លិខិតព្រមាន #' + (i + 1), [w.date, w.level, w.detail, w.fileName ? ('ឯកសារ: ' + w.fileName) : ''].filter(Boolean).join(' | ')]);
   });
-  add('៨. លិខិតព្រមាន', warningRows);
+  add(secTitle_('លិខិតព្រមាន', 8), warningRows);
 
   return rows;
 }
@@ -2799,7 +2852,9 @@ function toBackendProfilePayload_(d, requestId) {
     languages: [language.language, language.reading, language.writing, language.listening, language.speaking].filter(function(v) { return String(v || '').trim(); }).join(' | '),
     photoUrl: String(info.photoUrl || '').trim(),
     department: String(work.ministry || additional.ministry || '').trim(),
-    office: [work.sub1, work.sub2, work.sub3, work.sub4, work.sub5].filter(function(v) { return String(v || '').trim(); }).join(' / '),
+    office: [work.sub1, work.sub2, work.sub3, work.sub4, work.sub5, additional.sub1, additional.sub2, additional.sub3, additional.sub4, additional.sub5]
+      .filter(function(v) { return String(v || '').trim(); })
+      .join(' / '),
     position: String(work.position || additional.position || '').trim(),
     notes: [work.note, additional.note, education.note].filter(function(v) { return String(v || '').trim(); }).join(' | '),
     fullJson: JSON.stringify(d || {})
