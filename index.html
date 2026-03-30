@@ -2115,7 +2115,9 @@ function buildSummaryReportRows_(d, titlePrefix) {
   });
   add(secTitle_('លិខិតព្រមាន', 8), warningRows);
 
-  return rows;
+  return rows.map(function(row) {
+    return (row || []).map(function(cell) { return excelSafeText_(cell); });
+  });
 }
 
 function exportAllEmployeesReport_() {
