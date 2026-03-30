@@ -431,6 +431,10 @@ body {
         <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125v-3.75"/></svg>
         💾 បម្រុងទុកទិន្នន័យ (Backup)
       </button>
+      <button class="btn-export" onclick="exportAllEmployeesExcel()">
+        <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m0 0 6-6m-6 6-6-6"/><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 19.5h16.5"/></svg>
+        📦 នាំចេញទាំងអស់ (All Employees)
+      </button>
       
     </div>
     <div class="card" id="cardContainer"></div>
@@ -1684,6 +1688,11 @@ function radio(name) { var el = document.querySelector('input[name="'+name+'"]:c
 function setColWidths(ws, widths) { ws['!cols'] = widths.map(function(w){ return {wch:w}; }); }
 function getTimestamp() { var d=new Date(); return d.getFullYear()+''+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'_'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0'); }
 
+function hasStoredRecordsForExport_() {
+  loadRecords();
+  return !!(records && records.length);
+}
+
 function addKVSheet(wb, sheetName, title, kvPairs) {
   var data = [[title],[""],["Field","Value"]];
   kvPairs.forEach(function(r){ data.push(r); });
@@ -1694,6 +1703,10 @@ function addKVSheet(wb, sheetName, title, kvPairs) {
 
 // ─── 1. Export Data ───
 function exportExcelData() {
+  if (hasStoredRecordsForExport_()) {
+    exportAllEmployeesExcel();
+    return;
+  }
   var d = getMergedData();
   var wb = XLSX.utils.book_new();
   var warningItems = (d.warning && Array.isArray(d.warning.items)) ? d.warning.items : [];
@@ -1774,6 +1787,10 @@ function exportExcelData() {
 
 // ─── 2. Export Report ───
 function exportExcelReport() {
+  if (hasStoredRecordsForExport_()) {
+    exportAllEmployeesExcel();
+    return;
+  }
   var d = getMergedData();
   var wb = XLSX.utils.book_new();
   var name = (d.info.lastNameKh||'') + ' ' + (d.info.firstNameKh||'');
@@ -1866,6 +1883,10 @@ function exportExcelReport() {
 
 // ─── 3. Export Backup ───
 function exportExcelBackup() {
+  if (hasStoredRecordsForExport_()) {
+    exportAllEmployeesBackup_();
+    return;
+  }
   var d = getMergedData();
   var wb = XLSX.utils.book_new();
   var ts = new Date().toISOString();
@@ -1910,6 +1931,66 @@ function exportExcelBackup() {
 
   XLSX.writeFile(wb, "eProfile_Backup_" + getTimestamp() + ".xlsx");
   showToast("\u1794\u1798\u17D2\u179A\u17BB\u1784\u1791\u17BB\u1780 Backup \u178A\u17C4\u1799\u1787\u17C4\u1782\u1787\u17D0\u1799!", "success");
+}
+
+function exportAllEmployeesExcel() {
+  loadRecords();
+  if (!records || !records.length) {
+    showToast('No saved records to export.', 'error');
+    return;
+  }
+
+  var rows = [[
+    'អត្តលេខ', 'ឈ្មោះខ្មែរ', 'ឈ្មោះឡាតាំង', 'ភេទ', 'ថ្ងៃខែឆ្នាំកំណើត', 'ទូរស័ព្ទ', 'អ៊ីមែល',
+    'អាសយដ្ឋាន', 'ការសិក្សា', 'ជំនាញ', 'ភាសា', 'URL រូបថត', 'ក្រសួង/អង្គភាព', 'ការិយាល័យ',
+    'មុខតំណែង', 'សម្គាល់', 'ចំនួនលិខិតព្រមាន', 'កែប្រែចុងក្រោយ'
+  ]];
+
+  records.forEach(function(rec) {
+    var d = (rec && rec.data) ? rec.data : {};
+    var info = d.info || {};
+    var work = d.work || {};
+    var additional = d.additional || {};
+    var education = d.education || {};
+    var language = d.language || {};
+    var warning = d.warning || {};
+    var birth = info.birthPlace || {};
+    var curr = info.currentAddr || {};
+    var warningItems = Array.isArray(warning.items) ? warning.items : [];
+
+    var nameKh = ((info.lastNameKh || '') + ' ' + (info.firstNameKh || '')).trim();
+    var nameLatin = ((info.lastNameEn || '') + ' ' + (info.firstNameEn || '')).trim();
+    var address = [curr.street, curr.village, curr.commune, curr.district, curr.province].filter(Boolean).join(', ')
+      || [birth.village, birth.commune, birth.district, birth.province].filter(Boolean).join(', ');
+
+    rows.push([
+      info.officerId || rec.id || '',
+      nameKh,
+      nameLatin,
+      info.gender || '',
+      info.dob || '',
+      info.phone || '',
+      info.email || '',
+      address || '',
+      [education.level, education.degree, education.institution].filter(Boolean).join(' | '),
+      education.major || '',
+      [language.language, language.reading, language.writing, language.listening, language.speaking].filter(Boolean).join(' | '),
+      info.photoUrl || '',
+      work.ministry || additional.ministry || '',
+      [work.sub1, work.sub2, work.sub3, work.sub4, work.sub5].filter(Boolean).join(' / '),
+      work.position || additional.position || '',
+      [work.note, additional.note, education.note].filter(Boolean).join(' | '),
+      String(warningItems.length),
+      rec.updated || ''
+    ]);
+  });
+
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  setColWidths(ws, [12, 22, 22, 8, 14, 16, 22, 28, 24, 18, 24, 40, 20, 24, 20, 24, 12, 22]);
+  XLSX.utils.book_append_sheet(wb, ws, 'All Employees');
+  XLSX.writeFile(wb, 'eProfile_All_Employees_' + getTimestamp() + '.xlsx');
+  showToast('នាំចេញទិន្នន័យទាំងអស់ដោយជោគជ័យ!', 'success');
 }
 
 
@@ -2215,8 +2296,49 @@ function exSummary() {
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'របាយការណ៍សង្ខេប');
-  XLSX.writeFile(wb, 'eProfile_Summary_' + getTimestamp() + '.xlsx');
-  showToast('នាំចេញរបាយការណ៍សង្ខេបដោយជោគជ័យ!', 'success');
+  XLSX.writeFile(wb, "eProfile_Summary_" + getTimestamp() + ".xlsx");
+  showToast("នាំចេញរបាយការណ៍សង្ខេបដោយជោគជ័យ!", "success");
+}
+
+function exportAllEmployeesBackup_() {
+  loadRecords();
+  if (!records || !records.length) {
+    showToast('No saved records to backup.', 'error');
+    return;
+  }
+  var wb = XLSX.utils.book_new();
+  var ts = new Date().toISOString();
+
+  var meta = [
+    ['eProfile Backup File (All Employees)'], [''],
+    ['Backup Timestamp', ts],
+    ['Total Records', String(records.length)]
+  ];
+  var wsMeta = XLSX.utils.aoa_to_sheet(meta);
+  setColWidths(wsMeta, [32, 60]);
+  XLSX.utils.book_append_sheet(wb, wsMeta, '_BACKUP_INFO');
+
+  var indexRows = [['ID', 'Name (KH)', 'Updated At']];
+  var dataRows = [['id', 'json_data']];
+  records.forEach(function(rec) {
+    var d = (rec && rec.data) ? rec.data : {};
+    var info = d.info || {};
+    var id = String((info.officerId || rec.id || '')).trim();
+    var nameKh = ((info.lastNameKh || '') + ' ' + (info.firstNameKh || '')).trim();
+    indexRows.push([id, nameKh, rec.updated || '']);
+    dataRows.push([id, JSON.stringify(d)]);
+  });
+
+  var wsIndex = XLSX.utils.aoa_to_sheet(indexRows);
+  setColWidths(wsIndex, [18, 28, 24]);
+  XLSX.utils.book_append_sheet(wb, wsIndex, '_INDEX');
+
+  var wsData = XLSX.utils.aoa_to_sheet(dataRows);
+  setColWidths(wsData, [18, 120]);
+  XLSX.utils.book_append_sheet(wb, wsData, '_DATA_ALL');
+
+  XLSX.writeFile(wb, 'eProfile_Backup_All_' + getTimestamp() + '.xlsx');
+  showToast('បម្រុងទុកទិន្នន័យទាំងអស់ដោយជោគជ័យ!', 'success');
 }
 
 // ═══ PROFESSIONAL EXCEL EXPORT - DATA ═══
@@ -2578,6 +2700,10 @@ function newRecord() {
 
 
 function downloadSummary() {
+  if (hasStoredRecordsForExport_()) {
+    exportAllEmployeesExcel();
+    return;
+  }
   var d = getMergedData();
   var wb = XLSX.utils.book_new();
   var nm = ((d.info.lastNameKh||'')+' '+(d.info.firstNameKh||'')).trim()||'N/A';
