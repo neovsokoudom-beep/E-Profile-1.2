@@ -1875,6 +1875,12 @@ function excelSafeObject_(obj) {
   }
 }
 
+function excelSafeAoa_(rows) {
+  return (rows || []).map(function(row) {
+    return (row || []).map(function(cell) { return excelSafeText_(cell); });
+  });
+}
+
 function hasStoredRecordsForExport_() {
   loadRecords();
   return !!(records && records.length);
@@ -1883,7 +1889,7 @@ function hasStoredRecordsForExport_() {
 function addKVSheet(wb, sheetName, title, kvPairs) {
   var data = [[title],[""],["Field","Value"]];
   kvPairs.forEach(function(r){ data.push(r); });
-  var ws = XLSX.utils.aoa_to_sheet(data);
+  var ws = XLSX.utils.aoa_to_sheet(excelSafeAoa_(data));
   setColWidths(ws, [44, 44]);
   XLSX.utils.book_append_sheet(wb, ws, sheetName.substring(0,31));
 }
@@ -2146,7 +2152,7 @@ function exportAllEmployeesReport_() {
     indexRows.push([String(idx + 1), excelSafeText_(id), excelSafeText_(nameKh), sheetName, excelSafeText_(rec.updated || '')]);
   });
 
-  var wsIndex = XLSX.utils.aoa_to_sheet(indexRows);
+  var wsIndex = XLSX.utils.aoa_to_sheet(excelSafeAoa_(indexRows));
   setColWidths(wsIndex, [8, 16, 26, 20, 24]);
   XLSX.utils.book_append_sheet(wb, wsIndex, '_INDEX');
 
@@ -2192,7 +2198,7 @@ function exportExcelBackup() {
     ["Portal Version", "1.0"],
     ["Panels Backed Up", "8"],
   ];
-  var wsMeta = XLSX.utils.aoa_to_sheet(meta);
+  var wsMeta = XLSX.utils.aoa_to_sheet(excelSafeAoa_(meta));
   setColWidths(wsMeta, [30, 50]);
   XLSX.utils.book_append_sheet(wb, wsMeta, "_BACKUP_INFO");
 
@@ -2200,7 +2206,7 @@ function exportExcelBackup() {
   var jsonSheet = [["panel","json_data"]];
   Object.keys(safeD).forEach(function(key) { jsonSheet.push([key, excelSafeText_(JSON.stringify(safeD[key]))]); });
   jsonSheet.push(["__FULL__", excelSafeText_(JSON.stringify(safeD))]);
-  var wsJson = XLSX.utils.aoa_to_sheet(jsonSheet);
+  var wsJson = XLSX.utils.aoa_to_sheet(excelSafeAoa_(jsonSheet));
   setColWidths(wsJson, [20, 120]);
   XLSX.utils.book_append_sheet(wb, wsJson, "_DATA");
 
@@ -2216,7 +2222,7 @@ function exportExcelBackup() {
     ["Language", (d.language.language||'N/A')+' R:'+(d.language.reading||'-')+' W:'+(d.language.writing||'-')+' L:'+(d.language.listening||'-')+' S:'+(d.language.speaking||'-')],
     ["Warning", (d.warning && d.warning.items && d.warning.items.length ? ('Count: ' + d.warning.items.length) : 'Count: 0') + ((d.warning && d.warning.note) ? (' | Note: ' + d.warning.note) : '')],
   ];
-  var wsSummary = XLSX.utils.aoa_to_sheet(summary);
+  var wsSummary = XLSX.utils.aoa_to_sheet(excelSafeAoa_(summary));
   setColWidths(wsSummary, [25, 80]);
   XLSX.utils.book_append_sheet(wb, wsSummary, "_SUMMARY");
 
@@ -2277,7 +2283,7 @@ function exportAllEmployeesExcel() {
   });
 
   var wb = XLSX.utils.book_new();
-  var ws = XLSX.utils.aoa_to_sheet(rows);
+  var ws = XLSX.utils.aoa_to_sheet(excelSafeAoa_(rows));
   setColWidths(ws, [12, 22, 22, 8, 14, 16, 22, 28, 24, 18, 24, 40, 20, 24, 20, 24, 12, 22]);
   XLSX.utils.book_append_sheet(wb, ws, 'All Employees');
   XLSX.writeFile(wb, 'eProfile_All_Employees_' + getTimestamp() + '.xlsx');
@@ -2575,7 +2581,7 @@ function exSummary() {
   });
   p8.forEach(function(r,i){ rows.push([i===0?'៨. លិខិតព្រមាន':'', r[0], r[1]||'']); });
 
-  var ws = XLSX.utils.aoa_to_sheet(rows);
+  var ws = XLSX.utils.aoa_to_sheet(excelSafeAoa_(rows));
   ws['!cols'] = [{wch:22},{wch:28},{wch:50}];
 
   // Merge header cells
@@ -2605,7 +2611,7 @@ function exportAllEmployeesBackup_() {
     ['Backup Timestamp', ts],
     ['Total Records', String(records.length)]
   ];
-  var wsMeta = XLSX.utils.aoa_to_sheet(meta);
+  var wsMeta = XLSX.utils.aoa_to_sheet(excelSafeAoa_(meta));
   setColWidths(wsMeta, [32, 60]);
   XLSX.utils.book_append_sheet(wb, wsMeta, '_BACKUP_INFO');
 
@@ -2621,11 +2627,11 @@ function exportAllEmployeesBackup_() {
     dataRows.push([excelSafeText_(id), excelSafeText_(JSON.stringify(safeD))]);
   });
 
-  var wsIndex = XLSX.utils.aoa_to_sheet(indexRows);
+  var wsIndex = XLSX.utils.aoa_to_sheet(excelSafeAoa_(indexRows));
   setColWidths(wsIndex, [18, 28, 24]);
   XLSX.utils.book_append_sheet(wb, wsIndex, '_INDEX');
 
-  var wsData = XLSX.utils.aoa_to_sheet(dataRows);
+  var wsData = XLSX.utils.aoa_to_sheet(excelSafeAoa_(dataRows));
   setColWidths(wsData, [18, 120]);
   XLSX.utils.book_append_sheet(wb, wsData, '_DATA_ALL');
 
@@ -3055,7 +3061,7 @@ function downloadSummary() {
     warningRows.push(['លិខិតព្រមាន #' + (i + 1), [w.date, w.level, w.detail, w.fileName ? ('ឯកសារ: ' + w.fileName) : ''].filter(Boolean).join(' | ')]);
   });
   add('៨. លិខិតព្រមាន', warningRows);
-  var ws = XLSX.utils.aoa_to_sheet(rows);
+  var ws = XLSX.utils.aoa_to_sheet(excelSafeAoa_(rows));
   ws['!cols'] = [{wch:24},{wch:28},{wch:45}];
   ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:2}},{s:{r:1,c:0},e:{r:1,c:2}},{s:{r:2,c:0},e:{r:2,c:2}},{s:{r:3,c:0},e:{r:3,c:2}}];
   XLSX.utils.book_append_sheet(wb, ws, '\u179A\u1794\u17B6\u1799\u1780\u17B6\u179A\u178E\u17CD');
