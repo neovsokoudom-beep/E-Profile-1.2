@@ -970,7 +970,8 @@ function buildInfo() {
       </div>
       <div class="profile-photo">
         <div class="photo-box" id="photoBox"><span class="placeholder">📷</span></div>
-        <label class="photo-btn">បញ្ចូលរូបថត<input type="file" accept="image/*" style="display:none" onchange="previewPhoto(this)"></label>
+        <input id="info_photo_url" type="hidden">
+        <label class="photo-btn">បញ្ចូលរូបថត<input type="file" accept="image/*" style="display:none" onchange="previewPhoto(this, 'info_photo_url')"></label>
       </div>
     </div>
     <div class="form-grid cols-2" style="margin-top:16px">
@@ -1408,6 +1409,7 @@ function restorePanelData() {
         if (r.value === saved[key]) r.checked = true;
       });
     });
+    if (pid === 'info') renderPhotoPreview_(saved.info_photo_url || '');
     await restoreAddressCascade_('info_bp', saved);
     await restoreAddressCascade_('info_ca', saved);
     await restoreAddressCascade_('fam_ca', saved);
@@ -1447,7 +1449,8 @@ function getMergedData() {
       joinDate: p.info_jd||'', confirmDate: p.info_cd||'',
       lifeStatus: p.info_life||'', disability: p.info_disab||'',
       brothers: p.info_bro||'', sisters: p.info_sis||'',
-      phone: p.info_phone||'', email: p.info_email||''
+      phone: p.info_phone||'', email: p.info_email||'',
+      photoUrl: p.info_photo_url || ''
     };
   }
   if (pd.family) {
@@ -1557,15 +1560,32 @@ function goPanel(dir) {
 }
 
 // ─── Photo Preview ───
-function previewPhoto(input) {
-  if (input.files && input.files[0]) {
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      const box = document.getElementById('photoBox');
-      box.innerHTML = `<img src="${e.target.result}" alt="photo">`;
-    };
-    reader.readAsDataURL(input.files[0]);
+function renderPhotoPreview_(src) {
+  var box = document.getElementById('photoBox');
+  if (!box) return;
+  var value = String(src || '').trim();
+  if (!value) {
+    box.innerHTML = '<span class="placeholder">📷</span>';
+    return;
   }
+  box.innerHTML = '<img src="' + value.replace(/"/g, '&quot;') + '" alt="photo">';
+}
+
+function previewPhoto(input, targetId) {
+  if (!input || !input.files || !input.files[0]) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var dataUrl = String((e && e.target && e.target.result) || '').trim();
+    renderPhotoPreview_(dataUrl);
+    var target = document.getElementById(targetId || 'info_photo_url');
+    if (target) target.value = dataUrl;
+    setFieldValueInPanelData_('info_photo_url', dataUrl);
+    savePanelDraft_();
+  };
+  reader.onerror = function() {
+    showToast('Cannot read selected photo file.', 'error');
+  };
+  reader.readAsDataURL(input.files[0]);
 }
 
 // ─── Toast ───
@@ -1957,6 +1977,7 @@ function panelDataFromMerged_(d) {
       info_gender: info.gender || '', info_dob: info.dob || '',
       info_eth: info.ethnicity || '', info_nat: info.nationality || '',
       info_marital: info.maritalStatus || '',
+      info_photo_url: info.photoUrl || '',
       info_bp_prov: birthPlace.province || '', info_bp_dist: birthPlace.district || '', info_bp_comm: birthPlace.commune || '', info_bp_vill: birthPlace.village || '', info_bp_street: birthPlace.street || '',
       info_ca_prov: currentAddr.province || '', info_ca_dist: currentAddr.district || '', info_ca_comm: currentAddr.commune || '', info_ca_vill: currentAddr.village || '', info_ca_street: currentAddr.street || '',
       info_jd: info.joinDate || '', info_cd: info.confirmDate || '',
@@ -2417,6 +2438,7 @@ function toBackendProfilePayload_(d, requestId) {
     education: [education.level, education.degree, education.institution].filter(function(v) { return String(v || '').trim(); }).join(' | '),
     specialization: String(education.major || '').trim(),
     languages: [language.language, language.reading, language.writing, language.listening, language.speaking].filter(function(v) { return String(v || '').trim(); }).join(' | '),
+    photoUrl: String(info.photoUrl || '').trim(),
     department: String(work.ministry || additional.ministry || '').trim(),
     office: [work.sub1, work.sub2, work.sub3, work.sub4, work.sub5].filter(function(v) { return String(v || '').trim(); }).join(' / '),
     position: String(work.position || additional.position || '').trim(),
