@@ -277,12 +277,13 @@ body {
 .date-check input { accent-color: var(--accent); }
 .date-year-wrap { display: flex; align-items: center; gap: 8px; }
 .date-year-wrap input[type="date"] { flex: 1; }
-.date-year-btn {
-  height: 40px; padding: 0 12px; border-radius: var(--radius);
-  border: 1px solid var(--border); background: var(--card); color: var(--accent);
-  font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
+.date-year-select {
+  width: 96px; height: 40px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--card); color: var(--text);
+  padding: 0 8px; font: inherit; font-size: 12px; font-weight: 700;
+  outline: 0;
 }
-.date-year-btn:hover { border-color: var(--accent); background: var(--accent-light); }
+.date-year-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
 
 .summary-view {
   min-height: 40px; padding: 9px 12px; border-radius: var(--radius);
@@ -894,26 +895,38 @@ async function onDistChange(prefix) {
 // ─── Helpers ───
 function opts(arr) { return '<option value="">-- ជ្រើសរើស --</option>' + arr.map(a => `<option value="${a}">${a}</option>`).join(''); }
 function field(label, inner, cls='') { return `<div class="field ${cls}"><label>${label}</label>${inner}</div>`; }
+function yearOptionTags_() {
+  var current = new Date().getFullYear();
+  var from = current + 5;
+  var to = 1950;
+  var html = '<option value="">ឆ្នាំ</option>';
+  for (var y = from; y >= to; y--) {
+    html += '<option value="' + y + '">' + y + '</option>';
+  }
+  return html;
+}
 function input(id, type='text', ph='') {
   if (type === 'date') {
-    return `<div class="date-year-wrap"><input type="date" id="${id}" placeholder="${ph}"><button type="button" class="date-year-btn" onclick="pickYearForDate_('${id}')">ឆ្នាំ</button></div>`;
+    return `<div class="date-year-wrap"><input type="date" id="${id}" placeholder="${ph}" onchange="syncYearDropdownFromDate_('${id}')"><select id="${id}_year" class="date-year-select" onchange="applyYearDropdownToDate_('${id}')">${yearOptionTags_()}</select></div>`;
   }
   return `<input type="${type}" id="${id}" placeholder="${ph}">`;
 }
 function select(id, options) { return `<select id="${id}">${opts(options)}</select>`; }
 function textarea(id, rows=3) { return `<textarea id="${id}" rows="${rows}"></textarea>`; }
-function pickYearForDate_(id) {
+function syncYearDropdownFromDate_(id) {
   var dateEl = document.getElementById(id);
-  if (!dateEl) return;
-  var nowYear = String(new Date().getFullYear());
-  var currentYear = (dateEl.value && /^\d{4}/.test(dateEl.value)) ? dateEl.value.slice(0, 4) : nowYear;
-  var selectedYear = prompt('បញ្ចូលឆ្នាំ (YYYY)', currentYear);
-  if (selectedYear === null) return;
-  selectedYear = String(selectedYear).trim();
-  if (!/^\d{4}$/.test(selectedYear)) {
-    showToast('ឆ្នាំមិនត្រឹមត្រូវទេ។ សូមបញ្ចូល 4 ខ្ទង់។', 'error');
-    return;
-  }
+  var yearEl = document.getElementById(id + '_year');
+  if (!dateEl || !yearEl) return;
+  var year = (dateEl.value && /^\d{4}/.test(dateEl.value)) ? dateEl.value.slice(0, 4) : '';
+  yearEl.value = year;
+}
+
+function applyYearDropdownToDate_(id) {
+  var dateEl = document.getElementById(id);
+  var yearEl = document.getElementById(id + '_year');
+  if (!dateEl || !yearEl) return;
+  var selectedYear = String(yearEl.value || '').trim();
+  if (!selectedYear) return;
   var mm = '01';
   var dd = '01';
   if (dateEl.value) {
@@ -923,6 +936,13 @@ function pickYearForDate_(id) {
   }
   dateEl.value = selectedYear + '-' + mm + '-' + dd;
   dateEl.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function syncAllDateYearControls_() {
+  var dateEls = document.querySelectorAll('.date-year-wrap input[type="date"][id]');
+  dateEls.forEach(function(el) {
+    syncYearDropdownFromDate_(el.id);
+  });
 }
 function radioGroup(name, options) {
   return `<div class="radio-group">${options.map(o => `<label><input type="radio" name="${name}" value="${o}"> ${o}</label>`).join('')}</div>`;
@@ -1528,6 +1548,7 @@ function restorePanelData() {
     await restoreAddressCascade_('info_bp', saved);
     await restoreAddressCascade_('info_ca', saved);
     await restoreAddressCascade_('fam_ca', saved);
+    syncAllDateYearControls_();
     if (pid === 'warning') updateWarningCount_();
 
     if (typeof updateEmpSummary === 'function') setTimeout(updateEmpSummary, 200);
@@ -1921,99 +1942,178 @@ function exportExcelData() {
 }
 
 // ─── 2. Export Report ───
-function exportExcelReport() {
-  if (hasStoredRecordsForExport_()) {
-    exportAllEmployeesExcel();
-    return;
-  }
-  var d = getMergedData();
-  var wb = XLSX.utils.book_new();
-  var name = (d.info.lastNameKh||'') + ' ' + (d.info.firstNameKh||'');
-  var nameEn = (d.info.lastNameEn||'') + ' ' + (d.info.firstNameEn||'');
-  var bp = [d.info.birthPlace.village,d.info.birthPlace.commune,d.info.birthPlace.district,d.info.birthPlace.province].filter(Boolean).join(', ');
-  var ca = [d.info.currentAddr.street,d.info.currentAddr.village,d.info.currentAddr.commune,d.info.currentAddr.district,d.info.currentAddr.province].filter(Boolean).join(', ');
-  var warningItems = (d.warning && Array.isArray(d.warning.items)) ? d.warning.items : [];
-  var warningText = warningItems.map(function(w, i) {
-    return '#' + (i + 1) + ': ' + [w.date, w.level, w.detail, w.fileName ? ('File: ' + w.fileName) : ''].filter(Boolean).join(' | ');
-  }).join(' || ');
+function makeSheetName_(base, fallback) {
+  var name = String(base || '').trim() || String(fallback || 'Report');
+  name = name.replace(/[\\\/?*\[\]:]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!name) name = String(fallback || 'Report');
+  return name.slice(0, 31);
+}
 
+function makeUniqueSheetName_(base, used) {
+  var cleanBase = makeSheetName_(base, 'Report');
+  var name = cleanBase;
+  var i = 2;
+  while (used[name]) {
+    var suffix = ' (' + i + ')';
+    name = cleanBase.slice(0, Math.max(1, 31 - suffix.length)) + suffix;
+    i++;
+  }
+  used[name] = true;
+  return name;
+}
+
+function buildSummaryReportRows_(d, titlePrefix) {
+  d = d || {};
+  d.info = d.info || {};
+  d.family = d.family || {};
+  d.work = d.work || {};
+  d.framework = d.framework || {};
+  d.additional = d.additional || {};
+  d.education = d.education || {};
+  d.language = d.language || {};
+  d.warning = d.warning || {};
+  d.info.birthPlace = d.info.birthPlace || {};
+  d.info.currentAddr = d.info.currentAddr || {};
+
+  var nm = ((d.info.lastNameKh || '') + ' ' + (d.info.firstNameKh || '')).trim() || '—';
+  var ne = ((d.info.lastNameEn || '') + ' ' + (d.info.firstNameEn || '')).trim() || '';
+  var bp = [d.info.birthPlace.village, d.info.birthPlace.commune, d.info.birthPlace.district, d.info.birthPlace.province].filter(Boolean).join(', ');
+  var ca = [d.info.currentAddr.street, d.info.currentAddr.village, d.info.currentAddr.commune, d.info.currentAddr.district, d.info.currentAddr.province].filter(Boolean).join(', ');
+  var warningItems = Array.isArray(d.warning.items) ? d.warning.items : [];
   var rows = [
-    ["\u179A\u1794\u17B6\u1799\u1780\u17B6\u179A\u178E\u17CD\u179F\u1784\u17D2\u1781\u17C1\u1794 e-Profile \u2014 Officer Summary Report"],
-    ["Generated: " + new Date().toLocaleString()],
-    [""],
-    ["\u2550".repeat(50)],
-    ["1. \u1796\u17D0\u178F\u17CC\u1798\u17B6\u1793\u1793\u17B7\u1799\u17C4\u1787\u17B7\u178F - OFFICER INFORMATION"],
-    ["\u2550".repeat(50)],
-    [""],
-    ["Name (KH)", name], ["Name (EN)", nameEn],
-    ["Officer ID", d.info.officerId], ["ID Card", d.info.idCard],
-    ["Gender", d.info.gender], ["DOB", d.info.dob],
-    ["Ethnicity", d.info.ethnicity], ["Nationality", d.info.nationality],
-    ["Marital Status", d.info.maritalStatus],
-    ["Birthplace", bp], ["Current Address", ca],
-    ["Join Date", d.info.joinDate], ["Confirm Date", d.info.confirmDate],
-    ["Life Status", d.info.lifeStatus], ["Disability", d.info.disability],
-    ["Phone", d.info.phone], ["Email", d.info.email],
-    [""],
-    ["\u2550".repeat(50)],
-    ["2. \u1796\u17D0\u178F\u17CC\u1798\u17B6\u1793\u1782\u17D2\u179A\u17BD\u179F\u17B6\u179A - FAMILY"],
-    ["\u2550".repeat(50)],
-    [""],
-    ["Relation", d.family.relation],
-    ["Name", (d.family.lastNameKh||'')+' '+(d.family.firstNameKh||'')],
-    ["Gender", d.family.gender], ["Occupation", d.family.occupation],
-    [""],
-    ["\u2550".repeat(50)],
-    ["3. \u1794\u17D2\u179A\u179C\u178F\u17D2\u178F\u17B7\u1780\u17B6\u179A\u1784\u17B6\u179A - WORK HISTORY"],
-    ["\u2550".repeat(50)],
-    [""],
-    ["Ministry", d.work.ministry], ["Position", d.work.position],
-    ["Equivalent", d.work.equivalent], ["Status", d.work.status],
-    ["Period", (d.work.startDate||'?') + ' - ' + (d.work.endDate||'?')],
-    [""],
-    ["\u2550".repeat(50)],
-    ["4. \u1780\u17D2\u179A\u1794\u1781\u178E\u17D2\u178C - FRAMEWORK"],
-    ["\u2550".repeat(50)],
-    [""],
-    ["Type", d.framework.type], ["Rank", d.framework.rank], ["Grade", d.framework.grade],
-    ["Period", (d.framework.startDate||'?') + ' - ' + (d.framework.endDate||'?')],
-    [""],
-    ["\u2550".repeat(50)],
-    ["5. \u1798\u17BB\u1781\u1784\u17B6\u179A\u1794\u1793\u17D2\u1790\u17C2\u1798 - ADDITIONAL ROLE"],
-    ["\u2550".repeat(50)],
-    [""],
-    ["Position", d.additional.position], ["Ministry", d.additional.ministry], ["Status", d.additional.status],
-    [""],
-    ["\u2550".repeat(50)],
-    ["6. \u1794\u17D2\u179A\u179C\u178F\u17D2\u178F\u17B7\u179F\u17B7\u1780\u17D2\u179F\u17B6 - EDUCATION"],
-    ["\u2550".repeat(50)],
-    [""],
-    ["Degree", d.education.degree], ["Major", d.education.major],
-    ["Institution", d.education.institution], ["Country", d.education.country],
-    ["Period", (d.education.startDate||'?') + ' - ' + (d.education.endDate||'?')],
-    [""],
-    ["\u2550".repeat(50)],
-    ["7. \u1797\u17B6\u179F\u17B6 - LANGUAGE"],
-    ["\u2550".repeat(50)],
-    [""],
-    ["Language", d.language.language],
-    ["Read", d.language.reading], ["Write", d.language.writing],
-    ["Listen", d.language.listening], ["Speak", d.language.speaking],
-    [""],
-    ["\u2550".repeat(50)],
-    ["8. \u179B\u17B7\u1781\u17B7\u178F\u1796\u17D2\u179A\u1798\u17B6\u1793 - WARNING LETTERS"],
-    ["\u2550".repeat(50)],
-    [""],
-    ["Warning Count", String(warningItems.length)],
-    ["Warning Details", warningText || '-'],
-    ["Warning Note", (d.warning && d.warning.note) || ''],
+    [(titlePrefix ? (titlePrefix + ' - ') : '') + 'ព័ត៌មានសង្ខេបរបស់និយោជិត', '', ''],
+    ['កាលបរិច្ឆេទ: ' + new Date().toLocaleDateString('km-KH'), '', ''],
+    ['មន្ត្រី: ' + nm + (ne ? (' (' + ne + ')') : ''), '', ''],
+    ['អត្តលេខ: ' + (d.info.officerId || ''), '', ''],
+    ['', '', ''],
+    ['ផ្នែក', 'វាល', 'តម្លៃ']
   ];
 
+  function add(sec, items) {
+    items.forEach(function(r, i) { rows.push([i === 0 ? sec : '', r[0], r[1] || '']); });
+    rows.push(['', '', '']);
+  }
+
+  add('១. ព័ត៌មាននិយោជិត', [
+    ['ឈ្មោះ (ខ្មែរ)', nm],
+    ['ឈ្មោះ (ឡាតាំង)', ne],
+    ['ភេទ / ថ្ងៃខែឆ្នាំកំណើត', sj(d.info.gender, d.info.dob)],
+    ['ជនជាតិ / សញ្ជាតិ', sj(d.info.ethnicity, d.info.nationality)],
+    ['ស្ថានភាពគ្រួសារ', d.info.maritalStatus],
+    ['ទីកន្លែងកំណើត', bp],
+    ['អាសយដ្ឋានបច្ចុប្បន្ន', ca],
+    ['ទូរស័ព្ទ / អ៊ីមែល', sj(d.info.phone, d.info.email)],
+    ['ស្ថានភាព / កាយសម្បទា', sj(d.info.lifeStatus, d.info.disability)],
+    ['បងប្អូន (ប្រុស/ស្រី)', sj(d.info.brothers, d.info.sisters)],
+    ['URL រូបថត', d.info.photoUrl || '']
+  ]);
+
+  add('២. ព័ត៌មានគ្រួសារ', [
+    ['ទំនាក់ទំនង', d.family.relation],
+    ['ឈ្មោះ', ((d.family.lastNameKh || '') + ' ' + (d.family.firstNameKh || '')).trim()],
+    ['ភេទ / ថ្ងៃខែឆ្នាំកំណើត', sj(d.family.gender, d.family.dob)],
+    ['មុខរបរ', d.family.occupation]
+  ]);
+
+  add('៣. ប្រវត្តិការងារ', [
+    ['កាលបរិច្ឆេទ', sj(d.work.startDate, d.work.endDate, ' ~ ')],
+    ['ក្រសួង', d.work.ministry],
+    ['មុខតំណែង / ឋានៈស្មើ', sj(d.work.position, d.work.equivalent)],
+    ['ស្ថានភាព', d.work.status]
+  ]);
+
+  add('៤. ក្របខណ្ឌ', [
+    ['កាលបរិច្ឆេទ', sj(d.framework.startDate, d.framework.endDate, ' ~ ')],
+    ['ប្រភេទ', d.framework.type],
+    ['ប្រភេទ / ឋានន្តរសក្ដិ / ថ្នាក់', sj(d.framework.category, d.framework.rank) + (d.framework.grade ? (' / ' + d.framework.grade) : '')],
+    ['ឡើងសន្ទស្សន៍តាម', d.framework.indexUp]
+  ]);
+
+  add('៥. មុខងារបន្ថែម', [
+    ['កាលបរិច្ឆេទ', sj(d.additional.startDate, d.additional.endDate, ' ~ ')],
+    ['មុខតំណែង / ឋានៈស្មើ', sj(d.additional.position, d.additional.equivalent)],
+    ['ក្រសួង', d.additional.ministry],
+    ['ថ្នាក់', d.additional.level === 'central' ? 'ថ្នាក់កណ្តាល' : (d.additional.level === 'sub' ? 'ថ្នាក់ក្រោមជាតិ' : '')],
+    ['អង្គភាពថ្នាក់ក្រោម', [d.additional.sub1, d.additional.sub2, d.additional.sub3, d.additional.sub4, d.additional.sub5].filter(Boolean).join(' / ')],
+    ['ស្ថានភាព', d.additional.status],
+    ['សម្គាល់', d.additional.note]
+  ]);
+
+  add('៦. ប្រវត្តិការសិក្សា', [
+    ['កាលបរិច្ឆេទ', sj(d.education.startDate, d.education.endDate, ' ~ ')],
+    ['ថ្នាក់សិក្សា / វគ្គ', sj(d.education.level, d.education.course)],
+    ['សញ្ញាបត្រ / ជំនាញ', sj(d.education.degree, d.education.major)],
+    ['គ្រឹះស្ថានសិក្សា', d.education.institution],
+    ['ខេត្ត/ក្រុង / ប្រទេស', sj(d.education.city, d.education.country)]
+  ]);
+
+  add('៧. ភាសា', [
+    ['ភាសា', d.language.language],
+    ['អាន / សរសេរ', sj(d.language.reading, d.language.writing)],
+    ['ស្តាប់ / និយាយ', sj(d.language.listening, d.language.speaking)]
+  ]);
+
+  var warningRows = [
+    ['ចំនួនលិខិតព្រមាន', String(warningItems.length)],
+    ['កំណត់សម្គាល់', d.warning.note || '']
+  ];
+  warningItems.forEach(function(w, i) {
+    warningRows.push(['លិខិតព្រមាន #' + (i + 1), [w.date, w.level, w.detail, w.fileName ? ('ឯកសារ: ' + w.fileName) : ''].filter(Boolean).join(' | ')]);
+  });
+  add('៨. លិខិតព្រមាន', warningRows);
+
+  return rows;
+}
+
+function exportAllEmployeesReport_() {
+  loadRecords();
+  if (!records || !records.length) {
+    showToast('No saved records to export.', 'error');
+    return;
+  }
+
+  var wb = XLSX.utils.book_new();
+  var usedSheetNames = {};
+  var indexRows = [['ល.រ', 'អត្តលេខ', 'ឈ្មោះខ្មែរ', 'Sheet', 'កែប្រែចុងក្រោយ']];
+
+  records.forEach(function(rec, idx) {
+    var d = (rec && rec.data) ? rec.data : {};
+    var info = d.info || {};
+    var id = String(info.officerId || rec.id || ('REC-' + (idx + 1)));
+    var nameKh = ((info.lastNameKh || '') + ' ' + (info.firstNameKh || '')).trim() || '—';
+    var baseName = (idx + 1) + '-' + (id || nameKh);
+    var sheetName = makeUniqueSheetName_(baseName, usedSheetNames);
+    var rows = buildSummaryReportRows_(d, 'កំណត់ត្រាទី ' + (idx + 1));
+    var ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{wch:24},{wch:30},{wch:58}];
+    ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:2}},{s:{r:1,c:0},e:{r:1,c:2}},{s:{r:2,c:0},e:{r:2,c:2}},{s:{r:3,c:0},e:{r:3,c:2}}];
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    indexRows.push([String(idx + 1), excelSafeText_(id), excelSafeText_(nameKh), sheetName, excelSafeText_(rec.updated || '')]);
+  });
+
+  var wsIndex = XLSX.utils.aoa_to_sheet(indexRows);
+  setColWidths(wsIndex, [8, 16, 26, 20, 24]);
+  XLSX.utils.book_append_sheet(wb, wsIndex, '_INDEX');
+
+  XLSX.writeFile(wb, 'eProfile_Report_All_' + getTimestamp() + '.xlsx');
+  showToast('នាំចេញរបាយការណ៍ទាំងអស់ដោយជោគជ័យ!', 'success');
+}
+
+function exportExcelReport() {
+  if (hasStoredRecordsForExport_()) {
+    exportAllEmployeesReport_();
+    return;
+  }
+
+  var d = getMergedData();
+  var wb = XLSX.utils.book_new();
+  var rows = buildSummaryReportRows_(d, 'របាយការណ៍');
   var ws = XLSX.utils.aoa_to_sheet(rows);
-  setColWidths(ws, [42, 52]);
+  ws['!cols'] = [{wch:24},{wch:30},{wch:58}];
+  ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:2}},{s:{r:1,c:0},e:{r:1,c:2}},{s:{r:2,c:0},e:{r:2,c:2}},{s:{r:3,c:0},e:{r:3,c:2}}];
   XLSX.utils.book_append_sheet(wb, ws, "Report");
   XLSX.writeFile(wb, "eProfile_Report_" + getTimestamp() + ".xlsx");
-  showToast("\u1793\u17B6\u17C6\u1785\u17C1\u1789\u179A\u1794\u17B6\u1799\u1780\u17B6\u179A\u178E\u17CD Excel \u178A\u17C4\u1799\u1787\u17C4\u1782\u1787\u17D0\u1799!", "success");
+  showToast("នាំចេញរបាយការណ៍ Excel ដោយជោគជ័យ!", "success");
 }
 
 // ─── 3. Export Backup ───
